@@ -147,6 +147,37 @@ class MarReader(object):
             with open(entry_path, 'wb') as f:
                 write_to_file(self.extract_entry(e, decompress), f)
 
+    def hash(self, hasher, include_signatures=True):
+        hash_ = hasher()
+        hash_.update(self.mardata.header.magic)
+        hash_.update(str(self.mardata.header.index_offset))
+        if include_signatures and self.mardata.signatures:
+            hash_.update(str(self.mardata.signatures.filesize))
+            hash_.update(str(self.mardata.signatures.count))
+            for sig in self.mardata.signatures.sigs:
+                hash_.update(str(sig.algorithm_id))
+                hash_.update(str(sig.size))
+                hash_.update(sig.signature)
+        if self.mardata.additional:
+            print([k for k in self.mardata.additional.sections])
+            print(self.mardata.additional.count)
+            hash_.update(str(self.mardata.additional.count))
+            for section in self.mardata.additional.sections:
+                hash_.update(str(section.size))
+                hash_.update(str(section.id))
+                hash_.update(section.channel)
+                hash_.update(section.productversion)
+            hash_.update(str(self.mardata.additional.offset))
+        for entry in self.mardata.index.entries:
+            hash_.update(str(entry.offset))
+            hash_.update(str(entry.size))
+            hash_.update(str(entry.flags))
+            hash_.update(entry.name)
+        for entry in self.mardata.index.entries:
+            for block in self.extract_entry(entry, decompress=None):
+                hash_.update(block)
+        return hash_.hexdigest()
+
     def verify(self, verify_key):
         """Verify that this MAR file has a valid signature.
 

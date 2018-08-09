@@ -9,6 +9,7 @@ import os
 import sys
 from argparse import REMAINDER
 from argparse import ArgumentParser
+import hashlib
 
 import mardor.mozilla
 from mardor.reader import MarReader
@@ -42,6 +43,11 @@ def build_argparser():
     verify_group = parser.add_argument_group("Verify a MAR file")
     verify_group.add_argument("-v", "--verify", metavar="MARFILE",
                               help="verify the marfile")
+
+    hash_group = parser.add_argument_group("Print hash of a MAR file")
+    hash_group.add_argument("--hash", metavar="MARFILE", help="Print the hash of a MAR file")
+    hash_group.add_argument("-a", "--algorithm", dest="hash_algorithm", choices=hashers.keys(),
+                            default="sha512")
 
     parser.add_argument("-j", "--bzip2", action="store_const", dest="compression",
                         const="bz2", help="compress/decompress members with BZ2")
@@ -159,10 +165,18 @@ def do_create(marfile, files, compress, productversion=None, channel=None,
                 m.add(f, compress=compress)
 
 
+def do_hash(marfile, hasher):
+    # TODO: Add support for hashing without the signature block
+    hash_ = hasher()
+    with open(marfile, 'rb') as f:
+        hash_.update(f.read())
+        return hash_.hexdigest()
+
+
 def check_args(parser, args):
     """Validate commandline arguments."""
     # Make sure only one action has been specified
-    if len([a for a in [args.create, args.extract, args.verify, args.list, args.list_detailed] if a is not None]) != 1:
+    if len([a for a in [args.create, args.extract, args.verify, args.list, args.list_detailed, args.hash] if a is not None]) != 1:
         parser.error("Must specify something to do (one of -c, -x, -t, -T, -v)")
 
     if args.create and not args.files:
@@ -196,6 +210,13 @@ def get_key_from_cmdline(parser, args):
         signing_algorithm = None
 
     return signing_key, signing_algorithm
+
+
+hashers = {
+    "sha256": hashlib.sha256,
+    "sha384": hashlib.sha384,
+    "sha512": hashlib.sha512,
+}
 
 
 def main(argv=None):
@@ -237,6 +258,11 @@ def main(argv=None):
         do_create(marfile, args.files, args.compression,
                   productversion=args.productversion, channel=args.channel,
                   signing_key=signing_key, signing_algorithm=signing_algorithm)
+
+    elif args.hash:
+        marfile = os.path.abspath(args.hash)
+        digest = do_hash(marfile, hashers[args.hash_algorithm])
+        print(digest)
 
     # sanity check; should never happen
     else:  # pragma: no cover
